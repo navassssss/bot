@@ -1199,7 +1199,10 @@ def _handle_back(chat_id: int, story_msg_id: int, back_ctx: str) -> None:
 
 @bot.message_handler(commands=["start", "help"])
 def cmd_start(message: types.Message) -> None:
-    print("MESSAGE RECEIVED:", message.text)
+    print(
+         "START COMMAND:",
+         message.text
+    )
     track_user(message.from_user)
     show_home(message)
 
@@ -1246,8 +1249,18 @@ def handle_search_reply(message: types.Message) -> None:
     show_search_results(chat_id, query, page=1)
 
 
-@bot.callback_query_handler(func=lambda call: True)
-def on_callback(call: types.CallbackQuery) -> None:
+@bot.callback_query_handler(
+    func=lambda call: True
+)
+def on_callback(
+    call: types.CallbackQuery
+) -> None:
+
+    print(
+        "CALLBACK:",
+        call.data
+    )
+
     route_callback(call)
 
 
@@ -1262,15 +1275,38 @@ WEBHOOK_PATH = f"/{BOT_TOKEN}"
 @app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
 
-    json_str = request.get_data().decode("utf-8")
+    if request.headers.get(
+        "content-type"
+    ) == "application/json":
 
-    update = telebot.types.Update.de_json(
-        json_str
-    )
+        json_string = (
+            request.get_data()
+            .decode("utf-8")
+        )
 
-    bot.process_new_updates([update])
+        update = (
+            telebot.types.Update
+            .de_json(json_string)
+        )
 
-    return "OK", 200
+        try:
+            bot.process_new_updates(
+                [update]
+            )
+
+            print(
+                "UPDATE RECEIVED"
+            )
+
+        except Exception as e:
+            print(
+                "WEBHOOK ERROR:",
+                e
+            )
+
+        return "OK", 200
+
+    return "Bad Request", 403
 
 
 @app.route("/")
