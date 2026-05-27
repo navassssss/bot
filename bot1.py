@@ -395,7 +395,7 @@ def extract_teaser(
     )
 
     # Safety limit for Telegram
-    teaser = teaser[:700]
+    teaser = teaser[:400]
 
     return teaser
 
