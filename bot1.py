@@ -350,7 +350,247 @@ def increment_user_searches(user_id: int):
             "increment_user_searches:",
             e
         )
+def get_user_info(telegram_id):
 
+    users = supabase_get(
+        f"users?"
+        f"telegram_id=eq.{telegram_id}"
+        f"&select=*"
+    )
+
+    if users:
+
+        u = users[0]
+
+        name = (
+            u.get("first_name")
+            or "Unknown"
+        )
+
+        username = (
+            u.get("username")
+            or "-"
+        )
+
+        if username != "-":
+            return (
+                f"{name} "
+                f"(@{username})"
+            )
+
+        return name
+
+    return str(telegram_id)
+@bot.message_handler(
+    commands=["admin_users"]
+)
+def admin_users(message):
+
+    try:
+
+        parts = (
+            message.text.strip()
+            .split(maxsplit=1)
+        )
+
+        if (
+            len(parts) < 2
+            or
+            parts[1]
+            != ADMIN_KEY
+        ):
+            return
+
+        users = supabase_get(
+            "users?select=*"
+        )
+
+        if not users:
+            bot.reply_to(
+                message,
+                "No users."
+            )
+            return
+
+        text = (
+            "👥 <b>Users</b>\n\n"
+        )
+
+        for i, u in enumerate(
+            users[:50], 1
+        ):
+
+            username = (
+                f"@{u['username']}"
+                if u.get("username")
+                else "-"
+            )
+
+            text += f"""
+<b>{i}.</b>
+👤 {u.get('first_name', 'Unknown')}
+📛 {username}
+📖 Reads: {u.get('total_reads', 0)}
+🔎 Searches: {u.get('total_searches', 0)}
+
+"""
+
+        bot.send_message(
+            message.chat.id,
+            text[:4000]
+        )
+
+    except Exception as e:
+
+        print(
+            "ADMIN USERS:",
+            e
+        )
+@bot.message_handler(
+    commands=["admin_searches"]
+)
+def admin_searches(message):
+
+    parts = (
+        message.text.strip()
+        .split(maxsplit=1)
+    )
+
+    if (
+        len(parts) < 2
+        or
+        parts[1]
+        != ADMIN_KEY
+    ):
+        return
+
+    events = supabase_get(
+        "events?"
+        "event_type=eq.search"
+        "&select=*"
+        "&order=id.desc"
+    )
+
+    if not events:
+        bot.reply_to(
+            message,
+            "No searches."
+        )
+        return
+
+    text = (
+        "🔎 <b>Recent Searches</b>\n\n"
+    )
+
+    for e in events[:50]:
+
+        user_text = get_user_info(
+            e.get("telegram_id")
+        )
+
+        text += (
+            f"👤 {user_text}\n"
+            f"🔍 {e.get('value')}\n\n"
+        )
+
+    bot.send_message(
+        message.chat.id,
+        text[:4000]
+    )
+@bot.message_handler(
+    commands=["admin_events"]
+)
+def admin_events(message):
+
+    parts = (
+        message.text.strip()
+        .split(maxsplit=1)
+    )
+
+    if (
+        len(parts) < 2
+        or
+        parts[1]
+        != ADMIN_KEY
+    ):
+        return
+
+    events = supabase_get(
+        "events?"
+        "select=*"
+        "&order=id.desc"
+    )
+
+    if not events:
+        bot.reply_to(
+            message,
+            "No events."
+        )
+        return
+
+    text = (
+        "📝 <b>Recent Events</b>\n\n"
+    )
+
+    for e in events[:50]:
+
+        user_text = get_user_info(
+            e.get("telegram_id")
+        )
+
+        text += (
+            f"👤 {user_text}\n"
+            f"⚡ {e.get('event_type')}\n"
+            f"📌 {e.get('value')}\n\n"
+        )
+
+    bot.send_message(
+        message.chat.id,
+        text[:4000]
+    )
+@bot.message_handler(
+    commands=["admin_help"]
+)
+def admin_help(message):
+
+    parts = (
+        message.text.strip()
+        .split(maxsplit=1)
+    )
+
+    if (
+        len(parts) < 2
+        or
+        parts[1]
+        != ADMIN_KEY
+    ):
+        return
+
+    text = f"""
+🛠 <b>Admin Commands</b>
+
+📊 Overview
+<code>/admin {ADMIN_KEY}</code>
+
+👥 All Users
+<code>/admin_users {ADMIN_KEY}</code>
+
+🔎 Recent Searches
+<code>/admin_searches {ADMIN_KEY}</code>
+
+📝 Recent Events
+<code>/admin_events {ADMIN_KEY}</code>
+
+📈 Future Commands
+<code>/topstories {ADMIN_KEY}</code>
+<code>/activity {ADMIN_KEY}</code>
+<code>/powerusers {ADMIN_KEY}</code>
+"""
+
+    bot.send_message(
+        message.chat.id,
+        text
+    )
 
 def _wp_get(endpoint: str, params: dict | None = None):
     """
