@@ -173,7 +173,7 @@ def generate_story_cover(
 
       title_font = (
         ImageFont.truetype(
-            "/system/fonts/NotoSansMalayalam-Regular.ttf",
+            "fonts/NotoSansMalayalam-Regular.ttf",
             64
         )
       )
@@ -392,7 +392,7 @@ def post_story_to_channel(
         ).get_text()
 
         # Get FULL post
-        full_post = _wp_get(
+        full_post, _ = _wp_get(
             f"posts/{post_id}"
         )
 
