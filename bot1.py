@@ -1256,7 +1256,11 @@ def admin_help(message):
         text
     )
 
-def _wp_get(endpoint: str, params: dict | None = None):
+def _wp_get(
+    endpoint: str,
+    params: dict | None = None
+):
+
     """
     Wrapper for WordPress REST API requests.
     Returns (json_data, headers)
@@ -1264,21 +1268,57 @@ def _wp_get(endpoint: str, params: dict | None = None):
 
     url = f"{WP_API}/{endpoint}"
 
-    try:
-        r = requests.get(
-            url,
-            params=params,
-            timeout=20
-        )
+    headers = {
+        "User-Agent":
+        "Mozilla/5.0"
+    }
 
-        r.raise_for_status()
+    last_error = None
 
-        return r.json(), r.headers
+    for attempt in range(3):
 
-    except requests.RequestException as e:
-        raise RuntimeError(
-            f"WordPress API error: {e}"
-        )
+        try:
+
+            r = requests.get(
+                url,
+                params=params,
+                timeout=30,
+                headers=headers
+            )
+
+            r.raise_for_status()
+
+            return (
+                r.json(),
+                r.headers
+            )
+
+        except (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError
+        ) as e:
+
+            print(
+                f"WP retry "
+                f"{attempt + 1}/3:",
+                e
+            )
+
+            last_error = e
+
+            time.sleep(2)
+
+        except requests.RequestException as e:
+
+            raise RuntimeError(
+                f"WordPress API error: {e}"
+            )
+
+    raise RuntimeError(
+        f"WordPress timed out "
+        f"after retries: "
+        f"{last_error}"
+    )
 WP_API = "https://kkstories.com/wp-json/wp/v2"       
 def fetch_posts(page: int = 1, per_page: int = PER_PAGE,
                 category: int | None = None,
@@ -1831,10 +1871,27 @@ def show_search_results(chat_id: int, query: str, page: int = 1,
      query
     )
     increment_user_searches(chat_id)
+    loading = bot.send_message(
+       chat_id,
+       "🔎 Searching stories..."
+    )
     try:
         posts, total_pages = fetch_posts(page=page, search=query)
     except Exception as e:
-        bot.send_message(chat_id, f"⚠️ Search failed: {e}")
+        
+        print(
+          "search error:",
+          e
+        )
+
+        bot.send_message(
+            chat_id,
+            (
+        "⚠️ Site is slow right now.\n"
+        "Please try again "
+        "in a few seconds."
+            )
+        )  
         return
 
     if not posts:
@@ -1868,10 +1925,12 @@ def show_search_results(chat_id: int, query: str, page: int = 1,
         if row:
             kb.row(*row)
 
-    msg = bot.send_message(
-        chat_id,
-        f"🔎 <b>{query}</b>",
+    msg = bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=loading.message_id,
+        text=f"🔎 <b>{query}</b>",
         reply_markup=kb,
+        parse_mode="HTML"
     )
     # restore menu keyboard
     bot.send_message(
@@ -2350,6 +2409,15 @@ def on_callback(
         "CALLBACK:",
         call.data
     )
+    try:
+
+        bot.answer_callback_query(
+           call.id,
+           "⏳ Loading..."
+        )
+
+    except:
+        pass
 
     route_callback(call)
 
