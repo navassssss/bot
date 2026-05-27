@@ -171,24 +171,42 @@ def generate_story_cover(
 
     try:
 
-      title_font = (
+       title_font = (
         ImageFont.truetype(
             "fonts/NotoSansMalayalam-Regular.ttf",
             64
         )
-      )
+       )
 
-    except:
+    except Exception as e:
 
-     title_font = (
-        ImageFont.load_default()
-     )
+           print(
+                "title font error:",
+                e
+            )
 
-    subtitle_font = (
+           title_font = (
+           ImageFont.load_default()
+           )
+
+    try:
+
+      subtitle_font = (
         ImageFont.truetype(
             "fonts/NotoSansMalayalam-Regular.ttf",
             30
         )
+      )
+
+  except Exception as e:
+
+    print(
+        "subtitle font error:",
+        e
+    )
+
+    subtitle_font = (
+        ImageFont.load_default()
     )
 
     wrapped = textwrap.fill(
