@@ -64,7 +64,11 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+bot = telebot.TeleBot(
+    BOT_TOKEN,
+    parse_mode="HTML",
+    threaded=False
+)
 
 app = Flask(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1198,13 +1202,21 @@ def _handle_back(chat_id: int, story_msg_id: int, back_ctx: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 @bot.message_handler(commands=["start", "help"])
-def cmd_start(message: types.Message) -> None:
-    print(
-         "START COMMAND:",
-         message.text
-    )
-    track_user(message.from_user)
-    show_home(message)
+def cmd_start(message):
+
+    print("START HANDLER RUNNING")
+
+    try:
+        track_user(message.from_user)
+
+        print("TRACK USER OK")
+
+        show_home(message)
+
+        print("SHOW HOME OK")
+
+    except Exception as e:
+        print("START ERROR:", e)
 
 
 @bot.message_handler(func=lambda m: m.text == "🔥 Latest")
