@@ -399,6 +399,151 @@ def extract_teaser(
 
     return teaser
 
+def get_new_story():
+
+    posts, _ = fetch_posts(
+        page=1
+    )
+
+    for post in posts[:50]:
+
+        if not is_story_posted(
+            post["id"]
+        ):
+
+            return post
+
+    return None
+    
+def get_random_story():
+
+    page = random.randint(
+        1,
+        30
+    )
+
+    posts, _ = fetch_posts(
+        page=page
+    )
+
+    random.shuffle(posts)
+
+    for post in posts:
+
+        if not is_story_posted(
+            post["id"]
+        ):
+
+            return post
+
+    return None    
+    
+def get_popular_story():
+
+    best_post = None
+    best_likes = -1
+
+    for page in range(
+        1,
+        8
+    ):
+
+        posts, _ = fetch_posts(
+            page=page
+        )
+
+        for post in posts:
+
+            if is_story_posted(
+                post["id"]
+            ):
+                continue
+
+            likes = get_story_likes(
+                post["link"]
+            )
+
+            if likes > best_likes:
+
+                best_likes = likes
+                best_post = post
+
+    return best_post    
+    
+def today_post_count():
+
+    today = str(
+        datetime.now()
+        .date()
+    )
+
+    res = requests.get(
+        f"{SUPABASE_URL}"
+        "/rest/v1/"
+        "posted_stories"
+        f"?posted_date=eq.{today}"
+        "&select=id",
+        headers=HEADERS
+    )
+
+    return len(
+        res.json()
+    )    
+def get_story_likes(
+    post_url
+):
+
+    try:
+
+        r = requests.get(
+            post_url,
+            timeout=10,
+            headers={
+                "User-Agent":
+                "Mozilla/5.0"
+            }
+        )
+
+        soup = BeautifulSoup(
+            r.text,
+            "html.parser"
+        )
+
+        like_btn = soup.select_one(
+            "a.jm-post-like"
+        )
+
+        if not like_btn:
+
+            return 0
+
+        text = (
+            like_btn
+            .get_text(
+                strip=True
+            )
+        )
+
+        likes = re.search(
+            r"\d+",
+            text
+        )
+
+        return int(
+            likes.group()
+        ) if likes else 0
+
+    except Exception as e:
+
+        print(
+            "likes error:",
+            e
+        )
+
+        return 0
+
+
+
 def is_story_posted(
     post_id: int
 ) -> bool:
@@ -557,36 +702,60 @@ def check_new_stories():
 
     try:
 
-        posts, _ = fetch_posts(
-            page=1
+        # daily limit
+        if (
+            today_post_count()
+            >= 10
+        ):
+
+            print(
+                "Daily limit reached"
+            )
+
+            return
+
+        post = (
+            choose_story_to_post()
         )
 
-        for post in posts[:5]:
+        if not post:
 
-            post_id = post["id"]
+            print(
+                "No story found"
+            )
 
-            if not is_story_posted(
-                post_id
-            ):
+            return
 
-                print(
-                    "NEW STORY:",
-                    post_id
-                )
+        print(
+            "POSTING:",
+            post["id"]
+        )
 
-                post_story_to_channel(
-                    post
-                )
-
-                break
+        post_story_to_channel(
+            post
+        )
 
     except Exception as e:
 
         print(
             "check_new_stories:",
-            e
-        ) 
-       
+            repr(e)
+        )
+def choose_story_to_post():
+
+    r = random.random()
+
+    if r < 0.4:
+
+        return get_new_story()
+
+    elif r < 0.8:
+
+        return get_popular_story()
+
+    return get_random_story()
+    
+    
 def track_user(user):
     """
     Create/update user.
