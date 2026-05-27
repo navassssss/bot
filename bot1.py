@@ -310,21 +310,66 @@ def extract_teaser(
         "html.parser"
     ).get_text()
 
+    # Remove junk
+    content = re.sub(
+        r"\[.*?\]",
+        "",
+        content
+    )
+
+    content = re.sub(
+        r"www\.[^\s]+",
+        "",
+        content
+    )
+
+    content = re.sub(
+        r"Part\s+\d+",
+        "",
+        content,
+        flags=re.I
+    )
+
+    content = re.sub(
+        r"Author\s*:.*",
+        "",
+        content,
+        flags=re.I
+    )
+
     content = re.sub(
         r"\s+",
         " ",
         content
     ).strip()
 
-    teaser = content[:450]
+    # Remove summary heading
+    if "കഥാ സംഗ്രഹം" in content:
 
-    if len(teaser) > 400:
+        content = content.split(
+            "കഥാ സംഗ്രഹം",
+            1
+        )[1]
 
-        teaser = (
-            teaser.rsplit(
-                ".", 1
-            )[0]
-        )
+    # Bigger teaser
+    teaser = content[:800]
+
+    # Split by sentence
+    sentences = re.split(
+        r"[.!?।]",
+        teaser
+    )
+
+    cleaned = [
+        s.strip()
+        for s in sentences
+        if len(s.strip()) > 20
+    ]
+
+    # 8 meaningful lines
+    teaser = "\n\n".join(
+        cleaned[:8]
+    )
 
     return teaser
 
@@ -424,11 +469,7 @@ def post_story_to_channel(
             )
         )
 
-        poster = (
-            generate_story_cover(
-                title
-            )
-        )
+        poster = "logo.png"
 
         text = f"""
 📖 <b>{title}</b>
