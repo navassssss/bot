@@ -1609,8 +1609,12 @@ def cmd_start(message):
                 )
 
                 show_story(
-                    message.chat.id,
-                    post_id
+                    chat_id=message.chat.id,
+                    post_id=post_id,
+                    page=1,
+                    back_ctx={
+                         "type": "deeplink"
+                    }
                 )
 
                 return
