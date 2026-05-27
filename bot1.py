@@ -169,17 +169,27 @@ def generate_story_cover(
 
     draw = ImageDraw.Draw(img)
 
-    title_font = ImageFont.truetype(
-        "/system/fonts/NotoSansMalayalam-Regular.ttf",
-        64
-    )
+    try:
 
-    subtitle_font = (
+      title_font = (
         ImageFont.truetype(
-            "/system/fonts/Roboto-Regular.ttf",
+            "/system/fonts/NotoSansMalayalam-Regular.ttf",
+            64
+        )
+      )
+
+    except:
+
+     title_font = (
+        ImageFont.load_default()
+     )
+
+     subtitle_font = (
+        ImageFont.truetype(
+            "fonts/NotoSansMalayalam-Regular.ttf",
             30
         )
-    )
+     )
 
     wrapped = textwrap.fill(
         title,
@@ -381,19 +391,20 @@ def post_story_to_channel(
             "html.parser"
         ).get_text()
 
-        full_post = wp_get(
+        # Get FULL post
+        full_post = _wp_get(
             f"posts/{post_id}"
         )
 
         teaser = extract_teaser(
-               full_post.get(
-                    "content",
-                    {}
-                ).get(
-                      "rendered",
-                      ""
-                )   
-         )
+            full_post.get(
+                "content",
+                {}
+            ).get(
+                "rendered",
+                ""
+            )
+        )
 
         poster = (
             generate_story_cover(
@@ -453,7 +464,7 @@ def post_story_to_channel(
 
         print(
             "post_story_to_channel:",
-            e
+            repr(e)
         )
     
 def check_new_stories():
