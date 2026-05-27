@@ -1251,8 +1251,10 @@ def on_callback(call: types.CallbackQuery) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SELF-HEALING POLLING
 # ──────────────────────────────────────────────────────────────────────────────
+# WEBHOOK
+# ──────────────────────────────────────────────────────────────────────────────
+
 WEBHOOK_PATH = f"/{BOT_TOKEN}"
 
 
@@ -1273,31 +1275,25 @@ def webhook():
 @app.route("/")
 def home():
     return "Bot alive ✅", 200
-def main() -> None:
-    log.info("KKStories bot starting …")
-    while True:
-        try:
-           if __name__ == "__main__":
-
-              RENDER_URL = os.getenv(
-              "RENDER_URL"
-              )
-
-              bot.remove_webhook()
-
-              if RENDER_URL:
-                 bot.set_webhook(
-                 url=f"{RENDER_URL}/{TOKEN}"
-               )
-
-              app.run(
-                host="0.0.0.0",
-                port=10000
-              )
-        except Exception as exc:
-            log.error("Polling crashed: %s — restarting in 5 s", exc)
-            sleep(5)
 
 
-if __name__ == "__main__":
-    main()
+# ──────────────────────────────────────────────────────────────────────────────
+# SET WEBHOOK ON STARTUP
+# ──────────────────────────────────────────────────────────────────────────────
+
+RENDER_URL = os.getenv(
+    "RENDER_URL"
+)
+
+if RENDER_URL:
+    try:
+        bot.remove_webhook()
+
+        bot.set_webhook(
+            url=f"{RENDER_URL}/{BOT_TOKEN}"
+        )
+
+        print("Webhook set successfully")
+
+    except Exception as e:
+        print("Webhook error:", e)
