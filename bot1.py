@@ -166,6 +166,12 @@ def mark_story_posted(
             },
             timeout=10
         )
+    except Exception as e:
+
+        print(
+            "mark_story_posted:",
+            e
+        )
 def post_story_to_channel(
     post
 ):
@@ -244,12 +250,7 @@ def post_story_to_channel(
             "post_story_to_channel:",
             e
         )
-    except Exception as e:
-
-        print(
-            "mark_story_posted:",
-            e
-        )
+    
 def check_new_stories():
 
     try:
