@@ -381,10 +381,19 @@ def post_story_to_channel(
             "html.parser"
         ).get_text()
 
-        teaser = extract_teaser(
-            post["content"]
-            ["rendered"]
+        full_post = wp_get(
+            f"posts/{post_id}"
         )
+
+        teaser = extract_teaser(
+               full_post.get(
+                    "content",
+                    {}
+                ).get(
+                      "rendered",
+                      ""
+                )   
+         )
 
         poster = (
             generate_story_cover(
