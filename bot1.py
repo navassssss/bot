@@ -1728,6 +1728,28 @@ def show_home(message: types.Message) -> None:
 # CORE: show_latest
 # ──────────────────────────────────────────────────────────────────────────────
 
+@bot.message_handler(
+    commands=["support"]
+)
+def support_command(
+    message
+):
+
+    bot.send_message(
+        message.chat.id,
+        (
+            "🤖 <b>Need support or have any issue?</b>\n\n"
+            "Chat with our admin directly here 👇\n"
+            "<a href='https://t.me/kambikathaadbot'>"
+            "@kambikathaadbot"
+            "</a>\n\n"
+            "💬 Suggestions, help & support "
+            "available 😊"
+        ),
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
+
 def show_latest(chat_id: int, page: int = 1,
                 delete_msg_id: int | None = None) -> None:
     try:
