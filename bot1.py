@@ -198,16 +198,16 @@ def generate_story_cover(
         )
       )
 
-  except Exception as e:
+    except Exception as e:
 
-    print(
-        "subtitle font error:",
-        e
-    )
+      print(
+          "subtitle font error:",
+          e
+      )
 
-    subtitle_font = (
+      subtitle_font = (
         ImageFont.load_default()
-    )
+      )
 
     wrapped = textwrap.fill(
         title,
