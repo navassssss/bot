@@ -32,7 +32,9 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BASE_URL = os.getenv("BASE_URL")
-
+ADMIN_KEY = os.getenv(
+    "ADMIN_KEY"
+)
 SUPABASE_URL = os.getenv(
     "SUPABASE_URL"
 )
@@ -209,6 +211,107 @@ def can_count_story_read(user_id, post_id):
     story_read_cache[key] = now
     return True
     
+@bot.message_handler(
+    commands=["admin"]
+)
+def admin_panel(message):
+
+    try:
+
+        parts = (
+            message.text.strip()
+            .split(maxsplit=1)
+        )
+
+        if (
+            len(parts) < 2
+            or
+            parts[1]
+            != ADMIN_KEY
+        ):
+
+            bot.reply_to(
+                message,
+                "❌ Invalid key"
+            )
+
+            return
+
+        users = supabase_get(
+            "users?select=*"
+        )
+
+        events = supabase_get(
+            "events?select=*"
+        )
+
+        total_users = len(users)
+
+        total_reads = sum(
+            u.get(
+                "total_reads", 0
+            )
+            for u in users
+        )
+
+        total_searches = sum(
+            u.get(
+                "total_searches", 0
+            )
+            for u in users
+        )
+
+        today = (
+            datetime.utcnow()
+            .date()
+            .isoformat()
+        )
+
+        active_today = len([
+            u for u in users
+            if (
+                u.get(
+                    "last_seen", ""
+                )[:10]
+                == today
+            )
+        ])
+
+        text = f"""
+📊 <b>Bot Analytics</b>
+
+👥 Users:
+<b>{total_users}</b>
+
+🔥 Active Today:
+<b>{active_today}</b>
+
+📖 Total Reads:
+<b>{total_reads}</b>
+
+🔎 Searches:
+<b>{total_searches}</b>
+
+📝 Events Logged:
+<b>{len(events)}</b>
+"""
+
+        bot.send_message(
+            message.chat.id,
+            text
+        )
+
+    except Exception as e:
+
+        print(
+            "ADMIN ERROR:",
+            e
+        )
+
+        bot.reply_to(
+            message,
+            "⚠️ Admin failed"
+        )
 def increment_user_searches(user_id: int):
 
     try:
@@ -444,7 +547,24 @@ def get_story_parts(title: str, content: str) -> list[str]:
         pages.append(text)
     return pages if pages else ["(No content)"]
 
+def supabase_get(endpoint):
 
+    try:
+        res = requests.get(
+            f"{SUPABASE_URL}/rest/v1/{endpoint}",
+            headers=HEADERS,
+            timeout=10
+        )
+
+        return res.json()
+
+    except Exception as e:
+        print(
+            "supabase_get:",
+            e
+        )
+
+        return []
 # ──────────────────────────────────────────────────────────────────────────────
 # HELPERS: Part Detection
 # ──────────────────────────────────────────────────────────────────────────────
