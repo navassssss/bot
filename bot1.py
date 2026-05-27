@@ -1199,6 +1199,7 @@ def _handle_back(chat_id: int, story_msg_id: int, back_ctx: str) -> None:
 
 @bot.message_handler(commands=["start", "help"])
 def cmd_start(message: types.Message) -> None:
+    print("MESSAGE RECEIVED:", message.text)
     track_user(message.from_user)
     show_home(message)
 
