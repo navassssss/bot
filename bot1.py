@@ -1760,9 +1760,33 @@ def show_latest(chat_id: int, page: int = 1,
         if row:
             kb.row(*row)
 
-    msg = bot.send_message(chat_id, "🔥 <b>Latest Stories</b>", reply_markup=kb)
+    if delete_msg_id:
+
+       msg = bot.edit_message_text(
+           chat_id=chat_id,
+           message_id=delete_msg_id,
+           text="🔥 <b>Latest Stories</b>",
+           reply_markup=kb,
+           parse_mode="HTML"
+        )
+
+       msg_id = delete_msg_id
+
+    else:
+
+        msg = bot.send_message(
+            chat_id,
+            "🔥 <b>Latest Stories</b>",
+             reply_markup=kb,
+             parse_mode="HTML"
+        )
+
+        msg_id = msg.message_id
+
     nav_state[chat_id] = {
-        "type": "latest", "page": page, "msg_id": msg.message_id
+        "type": "latest",
+        "page": page,
+        "msg_id": msg_id
     }
 
 
@@ -1813,17 +1837,31 @@ def latest_command(
 
     try:
 
-        posts, _ = fetch_posts(
-            page=1
+        state = nav_state.get(
+            message.chat.id,
+            {}
         )
 
-        show_posts_list(
-            chat_id=
+        old_msg_id = state.get(
+            "msg_id"
+        )
+
+        if old_msg_id:
+
+            try:
+
+                bot.delete_message(
+                    message.chat.id,
+                    old_msg_id
+                )
+
+            except:
+                pass
+
+        show_latest(
             message.chat.id,
-            posts=posts[:10],
-            title=
-            "🆕 Latest Stories",
-            message_id=
+            page=1,
+            delete_msg_id=
             loading.message_id
         )
 
@@ -1840,7 +1878,11 @@ def latest_command(
             message_id=
             loading.message_id,
             text=
-            "⚠️ Failed to load latest stories."
+            (
+                "⚠️ Failed to "
+                "load latest "
+                "stories."
+            )
         )
 
 
@@ -2399,15 +2441,73 @@ def cmd_start(message):
             e
         )
 
+@bot.message_handler(
+    func=lambda m:
+    m.text == "🔥 Latest"
+)
+def cmd_latest(
+    message:
+    types.Message
+) -> None:
 
-@bot.message_handler(func=lambda m: m.text == "🔥 Latest")
-def cmd_latest(message: types.Message) -> None:
-    track_user(message.from_user)
-    # Delete old list message if present
-    state = nav_state.get(message.chat.id, {})
-    show_latest(message.chat.id, page=1,
-                delete_msg_id=state.get("msg_id"))
+    track_user(
+        message.from_user
+    )
 
+    loading = bot.send_message(
+        message.chat.id,
+        "📚 Loading latest stories..."
+    )
+
+    try:
+
+        state = nav_state.get(
+            message.chat.id,
+            {}
+        )
+
+        old_msg_id = state.get(
+            "msg_id"
+        )
+
+        if old_msg_id:
+
+            try:
+
+                bot.delete_message(
+                    message.chat.id,
+                    old_msg_id
+                )
+
+            except:
+                pass
+
+        show_latest(
+            message.chat.id,
+            page=1,
+            delete_msg_id=
+            loading.message_id
+        )
+
+    except Exception as e:
+
+        print(
+            "latest error:",
+            e
+        )
+
+        bot.edit_message_text(
+            chat_id=
+            message.chat.id,
+            message_id=
+            loading.message_id,
+            text=
+            (
+                "⚠️ Failed to "
+                "load latest "
+                "stories."
+            )
+        )
 
 @bot.message_handler(func=lambda m: m.text == "📚 Categories")
 def cmd_categories(message: types.Message) -> None:
