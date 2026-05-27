@@ -1560,11 +1560,15 @@ def _handle_back(chat_id: int, story_msg_id: int, back_ctx: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # TELEGRAM HANDLERS
 # ──────────────────────────────────────────────────────────────────────────────
-
 @bot.message_handler(
     commands=["start", "help"]
 )
 def cmd_start(message):
+
+    print(
+        "RAW START:",
+        message.text
+    )
 
     try:
 
@@ -1577,41 +1581,44 @@ def cmd_start(message):
             .split(maxsplit=1)
         )
 
-        # Deep link:
-        # /start story_87047
+        print("PARTS:", parts)
+
         if len(parts) > 1:
 
             payload = parts[1]
+
+            print(
+                "PAYLOAD:",
+                payload
+            )
 
             if payload.startswith(
                 "story_"
             ):
 
-                try:
-
-                    post_id = int(
-                        payload.replace(
-                            "story_",
-                            ""
-                        )
+                post_id = int(
+                    payload.replace(
+                        "story_",
+                        ""
                     )
+                )
 
-                    show_story(
-                        chat_id=message.chat.id,
-                        post_id=post_id,
-                        page=1
-                    )
+                print(
+                    "OPENING STORY:",
+                    post_id
+                )
 
-                    return
+                show_story(
+                    message.chat.id,
+                    post_id
+                )
 
-                except Exception as e:
+                return
 
-                    print(
-                        "Deep link error:",
-                        e
-                    )
+        print(
+            "SHOWING MENU"
+        )
 
-        # Normal start
         show_home(message)
 
     except Exception as e:
