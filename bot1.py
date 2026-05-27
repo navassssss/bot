@@ -12,6 +12,8 @@ from flask import Flask, request
 import os
 import re
 import time
+import schedule
+import threading
 import logging
 from time import sleep
 
@@ -41,6 +43,16 @@ SUPABASE_URL = os.getenv(
 
 SUPABASE_KEY = os.getenv(
     "SUPABASE_KEY"
+)
+CHANNEL_ID = int(
+    os.getenv("CHANNEL_ID")
+)
+
+POST_INTERVAL_MINUTES = int(
+    os.getenv(
+        "POST_INTERVAL_MINUTES",
+        120
+    )
 )
 
 HEADERS = {
@@ -92,6 +104,186 @@ search_pending: dict[int, int] = {}
 # ──────────────────────────────────────────────────────────────────────────────
 # HELPERS: WordPress API
 # ──────────────────────────────────────────────────────────────────────────────
+def is_story_posted(
+    post_id: int
+) -> bool:
+
+    try:
+
+        res = requests.get(
+            f"{SUPABASE_URL}"
+            "/rest/v1/"
+            "posted_stories"
+            f"?post_id=eq.{post_id}"
+            "&select=id",
+            headers=HEADERS,
+            timeout=10
+        )
+
+        return len(
+            res.json()
+        ) > 0
+
+    except Exception as e:
+
+        print(
+            "is_story_posted:",
+            e
+        )
+
+        return False
+def scheduler_loop():
+
+    schedule.every(
+        1
+    ).minutes.do(
+        check_new_stories
+    )
+
+    while True:
+
+        schedule.run_pending()
+
+        time.sleep(30)        
+def mark_story_posted(
+    post_id: int,
+    post_type="new"
+):
+
+    try:
+
+        requests.post(
+            f"{SUPABASE_URL}"
+            "/rest/v1/"
+            "posted_stories",
+            headers=HEADERS,
+            json={
+                "post_id":
+                post_id,
+
+                "type":
+                post_type
+            },
+            timeout=10
+        )
+def post_story_to_channel(
+    post
+):
+
+    try:
+
+        post_id = post["id"]
+
+        title = BeautifulSoup(
+            post["title"]["rendered"],
+            "html.parser"
+        ).get_text()
+
+        excerpt = BeautifulSoup(
+            post.get(
+                "excerpt",
+                {}
+            ).get(
+                "rendered",
+                ""
+            ),
+            "html.parser"
+        ).get_text()
+
+        excerpt = (
+            excerpt[:140]
+            .strip()
+        )
+
+        text = f"""
+🔥 <b>New Story</b>
+
+📖 <b>{title}</b>
+
+{excerpt}...
+
+👇 Continue reading
+"""
+
+        kb = (
+            types
+            .InlineKeyboardMarkup()
+        )
+
+        kb.add(
+            types
+            .InlineKeyboardButton(
+                "📖 Read Story",
+                url=(
+                    "https://t.me/"
+                    "kambikathaa_bot"
+                    f"?start=story_{post_id}"
+                )
+            )
+        )
+
+        bot.send_message(
+            CHANNEL_ID,
+            text,
+            reply_markup=kb
+        )
+
+        mark_story_posted(
+            post_id,
+            "new"
+        )
+
+        print(
+            f"Posted story "
+            f"{post_id}"
+        )
+
+    except Exception as e:
+
+        print(
+            "post_story_to_channel:",
+            e
+        )
+    except Exception as e:
+
+        print(
+            "mark_story_posted:",
+            e
+        )
+def check_new_stories():
+
+    try:
+
+        posts, _ = fetch_posts(
+            page=1
+        )
+
+        for post in posts[:5]:
+
+            post_id = post["id"]
+
+            if not is_story_posted(
+                post_id
+            ):
+
+                print(
+                    "NEW STORY:",
+                    post_id
+                )
+
+                post_story_to_channel(
+                    post
+                )
+
+                break
+
+    except Exception as e:
+
+        print(
+            "check_new_stories:",
+            e
+        ) 
+       
 def track_user(user):
     """
     Create/update user.
@@ -1694,7 +1886,10 @@ def on_callback(
 # ──────────────────────────────────────────────────────────────────────────────
 # WEBHOOK
 # ──────────────────────────────────────────────────────────────────────────────
-
+threading.Thread(
+    target=scheduler_loop,
+    daemon=True
+).start()
 WEBHOOK_PATH = f"/{BOT_TOKEN}"
 
 
