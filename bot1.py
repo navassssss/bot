@@ -575,7 +575,7 @@ def is_story_posted(
 def scheduler_loop():
 
     schedule.every(
-        1
+        POST_INTERVAL_MINUTES
     ).minutes.do(
         check_new_stories
     )
@@ -705,7 +705,7 @@ def check_new_stories():
         # daily limit
         if (
             today_post_count()
-            >= 10
+            >= 20
         ):
 
             print(
