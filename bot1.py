@@ -15,6 +15,14 @@ import time
 import schedule
 import threading
 import logging
+from PIL import (
+    Image,
+    ImageDraw,
+    ImageFont,
+    ImageFilter
+)
+import textwrap
+import random
 from time import sleep
 
 import requests
@@ -104,6 +112,194 @@ search_pending: dict[int, int] = {}
 # ──────────────────────────────────────────────────────────────────────────────
 # HELPERS: WordPress API
 # ──────────────────────────────────────────────────────────────────────────────
+def generate_story_cover(
+    title: str
+):
+
+    width = 1080
+    height = 1350
+
+    bg_colors = [
+        (15, 15, 15),
+        (25, 15, 15),
+        (20, 10, 10)
+    ]
+
+    bg_color = random.choice(
+        bg_colors
+    )
+
+    img = Image.new(
+        "RGB",
+        (width, height),
+        bg_color
+    )
+
+    draw = ImageDraw.Draw(img)
+
+    # Red cinematic glow
+    glow = Image.new(
+        "RGBA",
+        (width, height),
+        (0, 0, 0, 0)
+    )
+
+    gdraw = ImageDraw.Draw(glow)
+
+    gdraw.ellipse(
+        (
+            -200,
+            300,
+            900,
+            1400
+        ),
+        fill=(170, 0, 0, 70)
+    )
+
+    glow = glow.filter(
+        ImageFilter.GaussianBlur(
+            120
+        )
+    )
+
+    img = Image.alpha_composite(
+        img.convert("RGBA"),
+        glow
+    ).convert("RGB")
+
+    draw = ImageDraw.Draw(img)
+
+    title_font = ImageFont.truetype(
+        "/system/fonts/NotoSansMalayalam-Regular.ttf",
+        64
+    )
+
+    subtitle_font = (
+        ImageFont.truetype(
+            "/system/fonts/Roboto-Regular.ttf",
+            30
+        )
+    )
+
+    wrapped = textwrap.fill(
+        title,
+        width=18
+    )
+
+    bbox = draw.textbbox(
+        (0, 0),
+        wrapped,
+        font=title_font
+    )
+
+    text_width = (
+        bbox[2] - bbox[0]
+    )
+
+    x = (
+        width - text_width
+    ) // 2
+
+    y = 320
+
+    draw.text(
+        (x, y),
+        wrapped,
+        fill="white",
+        font=title_font
+    )
+
+    draw.text(
+        (80, 1100),
+        "Read Full Story",
+        fill=(180, 180, 180),
+        font=subtitle_font
+    )
+
+    try:
+
+        logo = Image.open(
+            "logo.png"
+        ).convert("RGBA")
+
+        logo.thumbnail(
+            (260, 260)
+        )
+
+        alpha = logo.getchannel(
+            "A"
+        )
+
+        alpha = alpha.point(
+            lambda p:
+            int(p * 0.65)
+        )
+
+        logo.putalpha(alpha)
+
+        lx = (
+            width
+            - logo.width
+            - 40
+        )
+
+        ly = (
+            height
+            - logo.height
+            - 40
+        )
+
+        img.paste(
+            logo,
+            (lx, ly),
+            logo
+        )
+
+    except Exception as e:
+
+        print(
+            "logo error:",
+            e
+        )
+
+    out = (
+        "/tmp/story_cover.jpg"
+    )
+
+    img.save(
+        out,
+        quality=95
+    )
+
+    return out
+
+def extract_teaser(
+    html_content
+):
+
+    content = BeautifulSoup(
+        html_content,
+        "html.parser"
+    ).get_text()
+
+    content = re.sub(
+        r"\s+",
+        " ",
+        content
+    ).strip()
+
+    teaser = content[:450]
+
+    if len(teaser) > 400:
+
+        teaser = (
+            teaser.rsplit(
+                ".", 1
+            )[0]
+        )
+
+    return teaser
+
 def is_story_posted(
     post_id: int
 ) -> bool:
@@ -185,30 +381,25 @@ def post_story_to_channel(
             "html.parser"
         ).get_text()
 
-        excerpt = BeautifulSoup(
-            post.get(
-                "excerpt",
-                {}
-            ).get(
-                "rendered",
-                ""
-            ),
-            "html.parser"
-        ).get_text()
+        teaser = extract_teaser(
+            post["content"]
+            ["rendered"]
+        )
 
-        excerpt = (
-            excerpt[:140]
-            .strip()
+        poster = (
+            generate_story_cover(
+                title
+            )
         )
 
         text = f"""
-🔥 <b>New Story</b>
-
 📖 <b>{title}</b>
 
-{excerpt}...
+{teaser}
 
-👇 Continue reading
+<i>ബാക്കി കഥ വായിക്കാൻ താഴെ ക്ലിക്ക് ചെയ്യൂ 👇</i>
+
+🔞 Previous parts available in bot
 """
 
         kb = (
@@ -219,7 +410,7 @@ def post_story_to_channel(
         kb.add(
             types
             .InlineKeyboardButton(
-                "📖 Read Story",
+                "📖 കഥ വായിക്കൂ",
                 url=(
                     "https://t.me/"
                     "kambikathaa_bot"
@@ -228,9 +419,14 @@ def post_story_to_channel(
             )
         )
 
-        bot.send_message(
+        bot.send_photo(
             CHANNEL_ID,
-            text,
+            photo=open(
+                poster,
+                "rb"
+            ),
+            caption=text,
+            parse_mode="HTML",
             reply_markup=kb
         )
 
