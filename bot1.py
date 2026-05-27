@@ -1561,22 +1561,65 @@ def _handle_back(chat_id: int, story_msg_id: int, back_ctx: str) -> None:
 # TELEGRAM HANDLERS
 # ──────────────────────────────────────────────────────────────────────────────
 
-@bot.message_handler(commands=["start", "help"])
+@bot.message_handler(
+    commands=["start", "help"]
+)
 def cmd_start(message):
 
-    print("START HANDLER RUNNING")
-
     try:
-        track_user(message.from_user)
 
-        print("TRACK USER OK")
+        track_user(
+            message.from_user
+        )
 
+        parts = (
+            message.text.strip()
+            .split(maxsplit=1)
+        )
+
+        # Deep link:
+        # /start story_87047
+        if len(parts) > 1:
+
+            payload = parts[1]
+
+            if payload.startswith(
+                "story_"
+            ):
+
+                try:
+
+                    post_id = int(
+                        payload.replace(
+                            "story_",
+                            ""
+                        )
+                    )
+
+                    show_story(
+                        chat_id=message.chat.id,
+                        post_id=post_id,
+                        page=1
+                    )
+
+                    return
+
+                except Exception as e:
+
+                    print(
+                        "Deep link error:",
+                        e
+                    )
+
+        # Normal start
         show_home(message)
 
-        print("SHOW HOME OK")
-
     except Exception as e:
-        print("START ERROR:", e)
+
+        print(
+            "START ERROR:",
+            e
+        )
 
 
 @bot.message_handler(func=lambda m: m.text == "🔥 Latest")
