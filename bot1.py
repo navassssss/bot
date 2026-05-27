@@ -184,12 +184,12 @@ def generate_story_cover(
         ImageFont.load_default()
      )
 
-     subtitle_font = (
+    subtitle_font = (
         ImageFont.truetype(
             "fonts/NotoSansMalayalam-Regular.ttf",
             30
         )
-     )
+    )
 
     wrapped = textwrap.fill(
         title,
