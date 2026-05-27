@@ -302,13 +302,14 @@ def generate_story_cover(
     return out
 
 def extract_teaser(
-    html_content
+    html_content,
+    title=""
 ):
 
     content = BeautifulSoup(
         html_content,
         "html.parser"
-    ).get_text()
+    ).get_text("\n")
 
     # Remove junk
     content = re.sub(
@@ -337,11 +338,26 @@ def extract_teaser(
         flags=re.I
     )
 
+    # Remove repeated title
+    if title:
+
+        content = re.sub(
+            re.escape(
+                title.strip()
+            ),
+            "",
+            content,
+            count=1,
+            flags=re.I
+        )
+
+    # Remove romanized title line
     content = re.sub(
-        r"\s+",
-        " ",
-        content
-    ).strip()
+        r"^[A-Za-z0-9\s|:,'\-]+$",
+        "",
+        content,
+        flags=re.M
+    )
 
     # Remove summary heading
     if "കഥാ സംഗ്രഹം" in content:
@@ -351,25 +367,35 @@ def extract_teaser(
             1
         )[1]
 
-    # Bigger teaser
-    teaser = content[:800]
+    # Clean line-by-line
+    lines = []
 
-    # Split by sentence
-    sentences = re.split(
-        r"[.!?।]",
-        teaser
-    )
+    for line in content.splitlines():
 
-    cleaned = [
-        s.strip()
-        for s in sentences
-        if len(s.strip()) > 20
-    ]
+        line = line.strip()
 
-    # 8 meaningful lines
+        # skip empty / tiny junk
+        if len(line) < 15:
+            continue
+
+        # normalize spaces
+        line = re.sub(
+            r"\s+",
+            " ",
+            line
+        )
+
+        lines.append(
+            line
+        )
+
+    # Keep only first meaningful lines
     teaser = "\n\n".join(
-        cleaned[:8]
+        lines[:8]
     )
+
+    # Safety limit for Telegram
+    teaser = teaser[:700]
 
     return teaser
 
@@ -466,7 +492,8 @@ def post_story_to_channel(
             ).get(
                 "rendered",
                 ""
-            )
+            ),
+            title
         )
 
         poster = "logo.png"
