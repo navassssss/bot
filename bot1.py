@@ -1258,9 +1258,10 @@ def admin_help(message):
 
 def _wp_get(
     endpoint: str,
-    params: dict | None = None
+    params: dict | None = None,
+    chat_id=None,
+    loading_msg_id=None
 ):
-
     """
     Wrapper for WordPress REST API requests.
     Returns (json_data, headers)
@@ -1305,6 +1306,29 @@ def _wp_get(
             )
 
             last_error = e
+
+# Update loading message
+            if (
+               chat_id
+               and
+               loading_msg_id
+            ):
+
+               try:
+
+                   bot.edit_message_text(
+                     chat_id=chat_id,
+                     message_id=
+                     loading_msg_id,
+                     text=(
+                       "⚠️ Site is slow.\n"
+                       f"🔄 Retrying..."
+                       f" ({attempt + 1}/3  )"
+                     )
+                   )
+
+               except:
+                   pass
 
             time.sleep(2)
 
