@@ -1479,6 +1479,7 @@ def admin_users(message):
         print("ADMIN USERS:", e)
         bot.reply_to(message, "⚠️ Failed to load users")
 
+@bot.message_handler(commands=["admin_searches"])
 def admin_searches(message):
     """Recent searches with optional date filter."""
     if not require_admin(message):
@@ -3026,7 +3027,7 @@ def route_callback(call: types.CallbackQuery) -> None:
 
 
     # ── Admin user pagination ────────────────────────────────────────────
-    m = re.match(r"^admin_users_(\\d+)$", data)
+    m = re.match(r"^admin_users_(\d+)$", data)
     if m:
         page = int(m.group(1))
         _show_admin_users_page(chat_id, msg_id, page)
