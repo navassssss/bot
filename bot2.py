@@ -1921,7 +1921,7 @@ def _wp_get(
         f"after retries: "
         f"{last_error}"
     )
-WP_API = "https://kkstories.com/wp-json/wp/v2"       
+WP_API = BASE_URL       
 def fetch_posts(page: int = 1, per_page: int = PER_PAGE,
                 category: int | None = None,
                 search: str | None = None,

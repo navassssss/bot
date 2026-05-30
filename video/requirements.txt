@@ -1,0 +1,24 @@
+# Core Frameworks
+aiogram
+Telethon
+
+# Async Database
+aiosqlite
+
+# Scheduling
+APScheduler
+
+# Configuration
+python-dotenv
+
+# Cryptography for secure tokens
+cryptography
+
+# Logging & Utilities
+structlog
+
+# HTTP client
+aiohttp
+
+# Date/Time utilities
+python-dateutil
