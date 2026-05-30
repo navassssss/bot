@@ -1848,11 +1848,8 @@ def _wp_get(
     url = f"{WP_API}/{endpoint}"
 
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/126.0.0.0 Safari/537.36"
-        )
+        "User-Agent":
+        "Mozilla/5.0"
     }
 
     last_error = None
