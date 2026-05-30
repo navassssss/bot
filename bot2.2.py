@@ -437,7 +437,6 @@ def batch_check_posted(post_ids: list[int]) -> set[int]:
 
     except Exception as e:
         print("batch_check_posted error:", e)
-        report_db_error("batch_check_posted", str(e))
         # Fallback: empty set (will try all posts individually)
         return set()
 
@@ -517,7 +516,6 @@ def today_post_count() -> int:
         return len(res.json())
     except Exception as e:
         print("today_post_count error:", e)
-        report_db_error("today_post_count", str(e))
         return 0    
 
 
@@ -556,35 +554,12 @@ def is_story_posted(
 def scheduler_loop():
     """
     Main scheduler with jitter to avoid predictable posting times.
-    Catches and reports errors to prevent silent failures.
     """
     # Initial schedule
     _schedule_next_post()
-    _schedule_new_user_flush()
-    _schedule_daily_summary()
-
-    consecutive_errors = 0
-    max_consecutive_errors = 10
 
     while True:
-        try:
-            schedule.run_pending()
-            consecutive_errors = 0  # Reset on success
-        except Exception as e:
-            consecutive_errors += 1
-            error_msg = f"Scheduler error ({consecutive_errors}/{max_consecutive_errors}): {str(e)[:200]}"
-            print(error_msg)
-
-            if consecutive_errors >= max_consecutive_errors:
-                report_scheduler_error(
-                    f"Scheduler failed {consecutive_errors} times in a row. "
-                    f"Auto-posting may be stopped. Last error: {str(e)[:200]}"
-                )
-                consecutive_errors = 0  # Reset after alerting
-
-            time.sleep(5)  # Brief pause before retry
-            continue
-
+        schedule.run_pending()
         time.sleep(30)
 
 
@@ -657,9 +632,7 @@ def mark_story_posted(post_id: int, post_type: str = "new") -> bool:
         if attempt < max_retries - 1:
             time.sleep(1)
 
-    error_msg = f"Failed to mark post {post_id} after {max_retries} attempts"
-    print(f"CRITICAL: {error_msg}")
-    report_db_error("mark_story_posted", error_msg)
+    print(f"CRITICAL: Failed to mark post {post_id} after {max_retries} attempts")
     return False
 def post_story_to_channel(post) -> bool:
     """
@@ -712,10 +685,9 @@ def post_story_to_channel(post) -> bool:
         marked = mark_story_posted(post_id, "new")
 
         if not marked:
-            # Posting succeeded but marking failed — alert admin
-            error_msg = f"Posted {post_id} but failed to mark as posted"
-            print(f"CRITICAL: {error_msg}")
-            report_posting_failure(post_id, "Marked as posted failed after verification")
+            # Posting succeeded but marking failed — log for manual fix
+            print(f"CRITICAL: Posted {post_id} but failed to mark as posted!")
+            # Could send admin alert here
             return False
 
         print(f"Posted story {post_id}")
@@ -753,7 +725,6 @@ def check_new_stories():
 
     except Exception as e:
         print("check_new_stories:", repr(e))
-        report_scheduler_error(f"check_new_stories crashed: {repr(e)[:200]}")
 def choose_story_to_post():
     """
     Select story type with weighted random:
@@ -781,14 +752,6 @@ def track_user(user):
     }
 
     try:
-        # Check if user exists first (to detect new users)
-        check_res = requests.get(
-            f"{SUPABASE_URL}/rest/v1/users?telegram_id=eq.{user.id}&select=id",
-            headers=HEADERS,
-            timeout=10
-        )
-        is_new = len(check_res.json()) == 0
-
         requests.post(
             f"{SUPABASE_URL}/rest/v1/users",
             headers={
@@ -798,10 +761,6 @@ def track_user(user):
             json=data,
             timeout=10
         )
-
-        # Report new user
-        if is_new:
-            report_new_user(user)
 
     except Exception as e:
         print("track_user:", e)
@@ -967,203 +926,22 @@ def require_admin(message) -> bool:
     return False
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# ADMIN REPORTING SYSTEM
-# ──────────────────────────────────────────────────────────────────────────────
-
-# Throttle alerts: {alert_type: last_sent_timestamp}
-_alert_throttle: dict[str, float] = {}
-_ALERT_THROTTLE_SECONDS = 300  # 5 minutes between same alert type
-
-def alert_admin(text: str, alert_type: str = "general", force: bool = False) -> None:
+def alert_admin(text: str) -> None:
     """
-    Send critical alert to admin via DM with throttling.
-
-    Args:
-        text: Alert message text
-        alert_type: Category for throttling (e.g., "posting", "webhook", "db_error")
-        force: Send even if throttled
+    Send critical alert to admin via DM.
+    Used for posting failures, DB errors, etc.
     """
     if not ALERT_ADMIN_ID:
         return
 
-    now = time.time()
-
-    # Check throttle
-    if not force:
-        last_sent = _alert_throttle.get(alert_type, 0)
-        if now - last_sent < _ALERT_THROTTLE_SECONDS:
-            log.warning("Alert throttled [%s]: %s", alert_type, text[:100])
-            return
-
-    _alert_throttle[alert_type] = now
-
     try:
-        # Add timestamp and type badge
-        timestamp = datetime.utcnow().strftime("%H:%M:%S UTC")
-        type_emoji = {
-            "posting": "📢",
-            "webhook": "🌐",
-            "db_error": "🗄️",
-            "new_user": "👤",
-            "broadcast": "📣",
-            "scheduler": "⏰",
-            "api_error": "⚡",
-            "general": "🚨",
-        }.get(alert_type, "🚨")
-
-        formatted = f"""{type_emoji} <b>Bot Alert</b> <code>[{alert_type}]</code>
-<i>{timestamp}</i>
-
-{text}"""
-
         bot.send_message(
             ALERT_ADMIN_ID,
-            formatted,
+            f"🚨 <b>Bot Alert</b>\n\n{text}",
             parse_mode="HTML"
         )
     except Exception as e:
-        log.error("Failed to alert admin: %s", e)
-
-
-def report_new_user(user) -> None:
-    """Report new user join to admin (throttled batch)."""
-    if not ALERT_ADMIN_ID:
-        return
-
-    # Use daily batch key
-    today = datetime.utcnow().date().isoformat()
-    alert_type = f"new_user_{today}"
-
-    # Always update a pending counter instead of sending immediately
-    # We'll batch these
-    _new_user_batch["count"] = _new_user_batch.get("count", 0) + 1
-    _new_user_batch["last_user"] = user
-    _new_user_batch["last_time"] = time.time()
-
-
-# Pending new user batch for throttled reporting
-_new_user_batch: dict = {"count": 0, "last_user": None, "last_time": 0}
-
-
-def _flush_new_user_report() -> None:
-    """Send batched new user report if any pending."""
-    count = _new_user_batch.get("count", 0)
-    if count == 0:
-        return
-
-    user = _new_user_batch.get("last_user")
-    if user:
-        name = user.first_name or "Unknown"
-        username = f"@{user.username}" if user.username else "no username"
-        text = (
-            f"👤 <b>{count} new user(s)</b> today\n\n"
-            f"Latest: <b>{name}</b> ({username})\n"
-            f"🆔 <code>{user.id}</code>"
-        )
-    else:
-        text = f"👤 <b>{count} new user(s)</b> joined today"
-
-    alert_admin(text, alert_type="new_user", force=True)
-    _new_user_batch["count"] = 0
-
-
-def report_posting_failure(post_id: int, reason: str) -> None:
-    """Report story posting failure to admin."""
-    text = (
-        f"📢 <b>Posting Failed</b>\n\n"
-        f"Post ID: <code>{post_id}</code>\n"
-        f"Reason: {reason}\n\n"
-        f"<i>Story may need manual posting.</i>"
-    )
-    alert_admin(text, alert_type="posting")
-
-
-def report_db_error(operation: str, error: str) -> None:
-    """Report database/Supabase error to admin."""
-    text = (
-        f"🗄️ <b>Database Error</b>\n\n"
-        f"Operation: <code>{operation}</code>\n"
-        f"Error: <code>{str(error)[:200]}</code>\n\n"
-        f"<i>Check Supabase status.</i>"
-    )
-    alert_admin(text, alert_type="db_error")
-
-
-def report_webhook_error(error: str) -> None:
-    """Report webhook processing error to admin."""
-    text = (
-        f"🌐 <b>Webhook Error</b>\n\n"
-        f"<code>{str(error)[:300]}</code>\n\n"
-        f"<i>Bot may be missing updates.</i>"
-    )
-    alert_admin(text, alert_type="webhook")
-
-
-def report_scheduler_error(error: str) -> None:
-    """Report scheduler failure to admin."""
-    text = (
-        f"⏰ <b>Scheduler Error</b>\n\n"
-        f"<code>{str(error)[:300]}</code>\n\n"
-        f"<i>Auto-posting may be stopped.</i>"
-    )
-    alert_admin(text, alert_type="scheduler")
-
-
-def report_api_error(endpoint: str, error: str) -> None:
-    """Report WordPress API error to admin."""
-    text = (
-        f"⚡ <b>WordPress API Error</b>\n\n"
-        f"Endpoint: <code>{endpoint}</code>\n"
-        f"Error: <code>{str(error)[:200]}</code>\n\n"
-        f"<i>Site may be down.</i>"
-    )
-    alert_admin(text, alert_type="api_error")
-
-
-def _send_daily_summary():
-    """Send daily activity summary to admin."""
-    try:
-        today = datetime.utcnow().date().isoformat()
-
-        # Get stats
-        users = supabase_get("users?select=*")
-        events = supabase_get(f"events?created_at=gte.{today}T00:00:00&select=*")
-        posted = today_post_count()
-
-        total_users = len(users)
-        active_today = len([u for u in users if u.get("last_seen", "")[:10] == today])
-        total_reads = sum(u.get("total_reads", 0) for u in users)
-        total_searches = sum(u.get("total_searches", 0) for u in users)
-
-        text = (
-            f"📊 <b>Daily Summary</b> <code>{today}</code>\n\n"
-            f"👥 Users: <b>{total_users}</b> (+{_new_user_batch.get('count', 0)} today)\n"
-            f"🔥 Active Today: <b>{active_today}</b>\n"
-            f"📖 Total Reads: <b>{total_reads}</b>\n"
-            f"🔎 Searches: <b>{total_searches}</b>\n"
-            f"📢 Posts Today: <b>{posted}/20</b>\n"
-            f"📝 Events: <b>{len(events)}</b>\n\n"
-            f"<i>Keep up the good work! 💪</i>"
-        )
-
-        alert_admin(text, alert_type="general", force=True)
-
-    except Exception as e:
-        print("daily summary error:", e)
-
-
-def _schedule_daily_summary():
-    """Schedule daily summary at 00:00 UTC."""
-    schedule.every().day.at("00:00").do(_send_daily_summary)
-    print("[SCHEDULER] Daily summary scheduled for 00:00 UTC")
-
-
-def _schedule_new_user_flush():
-    """Schedule periodic new user report flush."""
-    schedule.every(1).hours.do(_flush_new_user_report)
-    print("[SCHEDULER] New user flush scheduled every 1 hour")
-
+        print(f"Failed to alert admin: {e}")
 
 
 @bot.message_handler(commands=["admin_posting_status"])
@@ -1411,13 +1189,10 @@ def admin_broadcast(message):
 
         broadcast_text = parts[1]
 
-        # Store full message in pending dict (callback data has 64-byte limit)
-        broadcast_pending[message.chat.id] = broadcast_text
-
         # Confirm first
         confirm_kb = types.InlineKeyboardMarkup()
         confirm_kb.row(
-            types.InlineKeyboardButton("✅ Confirm Send", callback_data="broadcast_confirm"),
+            types.InlineKeyboardButton("✅ Confirm Send", callback_data=f"broadcast_confirm_{broadcast_text[:50]}"),
             types.InlineKeyboardButton("❌ Cancel", callback_data="broadcast_cancel")
         )
 
@@ -1468,7 +1243,7 @@ def admin_message_user(message):
 
     except Exception as e:
         print("admin_message error:", e)
-        bot.reply_to(message, "⚠️ Failed to send message. User may have blocked the bot.")
+        bot.reply_to(message, f"⚠️ Failed to send message: {e}")
 
 
 @bot.message_handler(
@@ -1704,7 +1479,6 @@ def admin_users(message):
         print("ADMIN USERS:", e)
         bot.reply_to(message, "⚠️ Failed to load users")
 
-@bot.message_handler(commands=["admin_searches"])
 def admin_searches(message):
     """Recent searches with optional date filter."""
     if not require_admin(message):
@@ -1915,7 +1689,6 @@ def _wp_get(
                 f"WordPress API error: {e}"
             )
 
-    report_api_error(endpoint, f"Timed out after 3 retries: {last_error}")
     raise RuntimeError(
         f"WordPress timed out "
         f"after retries: "
@@ -2403,38 +2176,6 @@ def support_command(
         disable_web_page_preview=True
     )
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# USER-FACING ERROR MESSAGES
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _user_error_message(error: Exception, context: str = "") -> str:
-    """
-    Convert raw exceptions into safe, user-friendly messages.
-    Never exposes URLs, stack traces, or internal details.
-    """
-    error_str = str(error).lower()
-
-    # WordPress / API errors
-    if any(k in error_str for k in ["wordpress", "wp-json", "api error", "500", "502", "503", "504"]):
-        return "⚠️ <b>Story server is temporarily unavailable.</b>\nPlease try again in a few moments. 💫"
-
-    # Timeout / connection
-    if any(k in error_str for k in ["timeout", "connection", "timed out", "unreachable", "refused"]):
-        return "⚠️ <b>Connection is slow right now.</b>\nPlease check your internet and try again. 🌐"
-
-    # Not found
-    if any(k in error_str for k in ["404", "not found"]):
-        return "⚠️ <b>Story not found.</b>\nIt may have been removed. 📭"
-
-    # Database / Supabase
-    if any(k in error_str for k in ["supabase", "database", "db error"]):
-        return "⚠️ <b>Something went wrong on our end.</b>\nPlease try again shortly. 🔧"
-
-    # Generic fallback
-    return "⚠️ <b>Oops! Something went wrong.</b>\nPlease try again. 🙏"
-
-
 def show_latest(chat_id: int, page: int = 1,
                 delete_msg_id: int | None = None,
                 loading_msg_id: int | None = None) -> None:
@@ -2442,14 +2183,14 @@ def show_latest(chat_id: int, page: int = 1,
         posts, total_pages = fetch_posts(page=page, chat_id=chat_id, loading_msg_id=loading_msg_id)
     except Exception as e:
         # Always update loading message if provided
-        fail_text = _user_error_message(e, "latest")
+        fail_text = f"⚠️ Could not load posts: {e}"
         if loading_msg_id:
             try:
-                bot.edit_message_text(chat_id=chat_id, message_id=loading_msg_id, text=fail_text, parse_mode="HTML")
+                bot.edit_message_text(chat_id=chat_id, message_id=loading_msg_id, text=fail_text)
             except:
-                bot.send_message(chat_id, fail_text, parse_mode="HTML")
+                bot.send_message(chat_id, fail_text)
         else:
-            bot.send_message(chat_id, fail_text, parse_mode="HTML")
+            bot.send_message(chat_id, fail_text)
         return
 
     kb = types.InlineKeyboardMarkup()
@@ -2514,8 +2255,7 @@ def show_categories(chat_id: int, delete_msg_id: int | None = None) -> None:
     try:
         cats = fetch_categories()
     except Exception as e:
-        print("show_categories error:", e)
-        bot.send_message(chat_id, _user_error_message(e, "categories"), parse_mode="HTML")
+        bot.send_message(chat_id, f"⚠️ Could not load categories: {e}")
         return
 
     kb = types.InlineKeyboardMarkup()
@@ -2610,14 +2350,14 @@ def show_category_posts(chat_id: int, cat_id: int, page: int = 1,
     try:
         posts, total_pages = fetch_posts(page=page, category=cat_id, chat_id=chat_id, loading_msg_id=loading_msg_id)
     except Exception as e:
-        fail_text = _user_error_message(e, "category")
+        fail_text = f"⚠️ Could not load category: {e}"
         if loading_msg_id:
             try:
-                bot.edit_message_text(chat_id=chat_id, message_id=loading_msg_id, text=fail_text, parse_mode="HTML")
+                bot.edit_message_text(chat_id=chat_id, message_id=loading_msg_id, text=fail_text)
             except:
-                bot.send_message(chat_id, fail_text, parse_mode="HTML")
+                bot.send_message(chat_id, fail_text)
         else:
-            bot.send_message(chat_id, fail_text, parse_mode="HTML")
+            bot.send_message(chat_id, fail_text)
         return
 
     if not cat_name:
@@ -2824,14 +2564,14 @@ def show_story(chat_id: int, post_id: int, page: int,
                 # Fallback: parse now (shouldn't happen)
                 pages = get_story_parts(title_text, content_html)
     except Exception as e:
-        fail_text = _user_error_message(e, "story")
+        fail_text = f"⚠️ Could not load story: {e}"
         if loading_msg_id:
             try:
-                bot.edit_message_text(chat_id=chat_id, message_id=loading_msg_id, text=fail_text, parse_mode="HTML")
+                bot.edit_message_text(chat_id=chat_id, message_id=loading_msg_id, text=fail_text)
             except:
-                bot.send_message(chat_id, fail_text, parse_mode="HTML")
+                bot.send_message(chat_id, fail_text)
         else:
-            bot.send_message(chat_id, fail_text, parse_mode="HTML")
+            bot.send_message(chat_id, fail_text)
         return
 
     total_pages = len(pages)
@@ -2919,14 +2659,14 @@ def show_related_story_parts(chat_id: int,
             per_page=10
         )
     except Exception as e:
-        fail_text = _user_error_message(e, "related")
+        fail_text = f"⚠️ Could not load author posts: {e}"
         if loading_msg_id:
             try:
-                bot.edit_message_text(chat_id=chat_id, message_id=loading_msg_id, text=fail_text, parse_mode="HTML")
+                bot.edit_message_text(chat_id=chat_id, message_id=loading_msg_id, text=fail_text)
             except:
-                bot.send_message(chat_id, fail_text, parse_mode="HTML")
+                bot.send_message(chat_id, fail_text)
         else:
-            bot.send_message(chat_id, fail_text, parse_mode="HTML")
+            bot.send_message(chat_id, fail_text)
         return
 
     kb = types.InlineKeyboardMarkup()
@@ -3131,9 +2871,6 @@ def _send_admin_message(chat_id: int, msg_id: int, user_id: int, text: str) -> N
 # Pending admin messages: {admin_chat_id: {"target_id": user_id, "prompt_msg_id": msg_id}}
 admin_msg_pending: dict[int, dict] = {}
 
-# Pending broadcast messages: {admin_chat_id: full_broadcast_text}
-broadcast_pending: dict[int, str] = {}
-
 def _show_admin_users_page(chat_id: int, msg_id: int, page: int) -> None:
     """Show admin users list page (for inline pagination)."""
     try:
@@ -3330,12 +3067,10 @@ def route_callback(call: types.CallbackQuery) -> None:
         safe_edit(chat_id, msg_id, "❌ Broadcast cancelled.")
         return
 
-    if data == "broadcast_confirm":
-        broadcast_text = broadcast_pending.pop(chat_id, None)
-        if broadcast_text:
-            _execute_broadcast(chat_id, msg_id, broadcast_text)
-        else:
-            safe_edit(chat_id, msg_id, "⚠️ Broadcast expired. Please send again.")
+    m = re.match(r"^broadcast_confirm_(.+)$", data)
+    if m:
+        broadcast_text = m.group(1)
+        _execute_broadcast(chat_id, msg_id, broadcast_text)
         return
 
     log.warning("Unhandled callback: %s", data)
@@ -3425,17 +3160,11 @@ def cmd_start(message):
                     post_id
                 )
 
-                loading = bot.send_message(
-                    message.chat.id,
-                    "📖 Loading story..."
-                )
-
                 show_story(
                     chat_id=message.chat.id,
                     post_id=post_id,
                     page=1,
-                    back_ctx="deeplink",
-                    loading_msg_id=loading.message_id
+                    back_ctx="deeplink"
                 )
 
                 return
@@ -3671,7 +3400,6 @@ def webhook():
                 "WEBHOOK ERROR:",
                 e
             )
-            report_webhook_error(str(e))
 
         return "OK", 200
 
